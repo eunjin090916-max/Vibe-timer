@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui}[hidden]{display:none!important}</style>
+<title>진동 스택 타이머</title>
+<style>
+@font-face{
+  font-family:"Dotgrid";
+  src:url(data:font/woff2;base64,d09GMgABAAAAAANAAA0AAAAAG4QAAALqAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGhYGYD9TVEFUMgBIEQgKrhioYwE2AiQDGgsYAAQgBYNEByAb0hcAHgfOeS3gvPVQ10KHTzLEeJ7/cf/tc7+AhAFDh0ObNSHJCYpGH7cAtnF+P+2vZpYK6cc1kiOAt9AsWMo66lQi06K1i1dJ//u/nJYvJMJv47Y1OB4KGaYeY+flwgrQVhmM76txYzpb53unclVadhHPYmRcHM8maAYUEY2iuuytOquGcq584sL2P1TywXJKfWNpamwopaq+1CEAsLQUWOXXEkfVy0otVWejhgTyr7zHOCSiXkE3jGm07VuCPowD+1pTHFFE0FF1FhRUoRtd0I1hNaRatWBDJZYqEdVoVKNBvSpFnVpRLVKpDdEEeiFXabhHw29ANaCDjEibFk3atGnT3LH9YKWce8rJZ0388y+CTz1v5D+MWb6AEMoBWVONxK3PpeN0ZPygP241YVdBOpRi0tK9LO7tVojohPkVTC6urpTgF44/xL39y7/+eFBRkoW/YnL+mpvfavoTJuCPFvs/iV92Lx33/FAWW+328aXOa520s6z68F5NrT249sIdmNE4JPcHkN5YrBGfDuNZcvN0pQRKXr/WerHzQiAleZoCF+iySpnpD6WQcO5AheviyiyS5M0Akk6kDKDx3xlMe2q51C6v1g/0ZKDD0THxtKKnjDugBnPQmp45pfBZZaXatkUFRi+U/FmPnlL8UcHtewp/6gpvIn8/QjjxQRAOTd3cURJv/l9fqn7ApxsNL/Dttx2mmvwsr1CrgPD3abbshfDsT2FuHmol/6wEZF4OmrJCRm+7f6rRcXSpbsBD7v3R7cNftHrtr7LotlsN568x6M9fqzuNvg68jA6Ezsz7t4jmbORFDK2MtTW1TFGM9IzMNB1Q4u8NgA+JaRIgbNzVOkANE9xmHlrIu/AJilzrsamhCScdnaY2VGWmShuB6Acv0YM5WPM9lXN5QMdtV8E344Go1HRFcfJNs653zEBLf8y4rloBJi7cSI1JpmS81UYMUCuKsckzTToYqJ8BTLpyCthtkg5UTh2WzgAAAA==) format("woff2");
+  font-display:block;
+}
+:root{
+  /* Layout: a device face. A control deck on top; everything below is one press pad with a dot-matrix readout. */
+  --bg:#000;            /* true black, so OLED pixels stay off */
+  --surface:#151310;
+  --surface-hi:#221f1a;
+  --line:#2b2722;
+  --fg:#efe8dc;
+  --muted:#8f877b;
+  --faint:#625b51;
+  --lit:#f5a33b;        /* amber, like a lit LED segment */
+  --lit-dim:#9b6b2c;
+  --held:#0d0b08;
+  --display:"Dotgrid",ui-monospace,"Roboto Mono",Menlo,monospace;
+  --ui:system-ui,-apple-system,"Apple SD Gothic Neo","Noto Sans KR","Malgun Gothic",sans-serif;
+  color-scheme:dark;
+}
+html{height:100%;box-sizing:border-box;background:var(--bg)}
+*,*::before,*::after{box-sizing:inherit}
+body{
+  height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:var(--ui);
+  overflow:hidden;overscroll-behavior:none;touch-action:none;word-break:keep-all;overflow-wrap:anywhere;
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;
+}
+.app{
+  height:100%;max-width:520px;margin-inline:auto;
+  display:flex;flex-direction:column;gap:12px;
+  padding-inline:16px;padding-block:12px 16px;
+}
+
+/* control deck */
+.deck{display:grid;gap:8px}
+.row{display:grid;gap:8px}
+.row-time{grid-template-columns:1fr 1fr}
+.row-stack{grid-template-columns:repeat(3,1fr)}
+.seg{display:grid;grid-template-columns:1fr 1fr}
+.key{
+  appearance:none;height:52px;min-width:0;padding:0 6px;
+  border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--fg);
+  font:600 15px/1.1 var(--ui);letter-spacing:-.01em;white-space:nowrap;
+  touch-action:none;cursor:pointer;transition:background-color .12s,opacity .15s;
+}
+.key b{font-weight:650;font-variant-numeric:tabular-nums}
+.key .u{margin-left:1px;color:var(--muted);font-weight:500}
+.seg .key:first-child{border-radius:14px 0 0 14px}
+.seg .key:last-child{border-radius:0 14px 14px 0;border-left:0}
+.key:active:not(:disabled),.key.is-down{background:var(--surface-hi)}
+.key:disabled{opacity:.3;cursor:default}
+.key:focus-visible{outline:2px solid var(--lit);outline-offset:2px}
+
+/* press pad: readout sits high, the lower part is left for the thumb */
+.pad{
+  position:relative;flex:1;min-height:0;
+  display:flex;flex-direction:column;align-items:center;justify-content:space-between;
+  padding:60px 16px 22px;
+  border:1px solid var(--line);border-radius:28px;background:var(--bg);
+  touch-action:none;outline:none;overflow:hidden;cursor:pointer;
+  transition:border-color .12s,background-color .12s;
+}
+.pad.is-held{border-color:var(--lit-dim);background:var(--held)}
+.pad:focus-visible{outline:2px solid var(--lit);outline-offset:3px}
+.pad-top{
+  position:absolute;top:18px;left:22px;right:22px;
+  display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  font-size:13px;color:var(--muted);pointer-events:none;
+}
+.pad-top b{margin-left:6px;color:var(--fg);font-weight:600;font-variant-numeric:tabular-nums}
+.total{font-variant-numeric:tabular-nums}
+.stage,.hints{display:flex;flex-direction:column;align-items:center;pointer-events:none}
+.stage{margin-top:clamp(0px,5vh,48px)}
+.note{
+  max-width:30ch;margin:0 0 24px;font-size:13px;line-height:1.5;color:var(--lit);
+  text-align:center;text-wrap:balance;
+}
+.readout{display:flex;flex-direction:column;align-items:center;pointer-events:none}
+.time{
+  --size:min(26vw,21vh,132px);
+  font-family:var(--display);font-size:var(--size);line-height:.7;white-space:nowrap;
+  color:var(--fg);transition:color .12s;
+}
+.time.is-long{font-size:calc(var(--size) * .8)}
+.time .ss{margin-right:-.1em}           /* drop the last digit's empty right column so the readout centers */
+.colon,.dp{position:relative;display:inline-block;width:.2em;height:.7em}
+.dp{height:.1em}
+.colon::before,.colon::after,.dp::before{
+  content:"";position:absolute;left:.005em;width:.09em;height:.09em;border-radius:50%;background:currentColor;
+}
+.colon::before{bottom:.405em}
+.colon::after{bottom:.205em}
+.dp::before{bottom:.005em}
+.tail{display:inline-block;width:0;white-space:nowrap}   /* tenths hang off the right edge without shifting the centered digits */
+.tenths{display:inline-block;margin-left:.28em;font-size:.36em;opacity:.7}
+.bar{width:100%;height:3px;margin-top:22px;border-radius:2px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--lit);transform:scaleX(0);transform-origin:0 50%}
+.hint{margin:0;min-height:1.4em;font-size:15px;color:var(--muted);text-align:center;text-wrap:balance}
+.sub{margin:6px 0 0;min-height:1.35em;font-size:13px;color:var(--faint);text-align:center;text-wrap:balance}
+.ring{position:absolute;inset:0;border:2px solid var(--lit);border-radius:inherit;opacity:0;pointer-events:none}
+
+.pad[data-state="running"] .time{color:var(--lit)}
+.pad[data-state="running"] .hint{color:var(--fg)}
+.pad[data-state="paused"] .time{color:var(--lit-dim)}
+.pad[data-state="alarm"] .ring{animation:ring .55s linear infinite}
+.pad[data-state="alarm"] .hint{color:var(--lit)}
+@keyframes ring{0%,72%{opacity:1}73%,100%{opacity:.12}}
+.slide-next{animation:slideNext .2s ease-out}
+.slide-prev{animation:slidePrev .2s ease-out}
+@keyframes slideNext{from{transform:translateX(12%);opacity:0}}
+@keyframes slidePrev{from{transform:translateX(-12%);opacity:0}}
+
+@media (max-height:560px){
+  .key{height:44px}
+  .pad{padding-top:44px;padding-bottom:14px}
+  .stage{margin-top:0}
+  .bar{margin-top:16px}
+}
+@media (prefers-reduced-motion:reduce){
+  .pad[data-state="alarm"] .ring{animation:none;opacity:1}
+  .slide-next,.slide-prev{animation:none}
+  .key,.pad,.time{transition:none}
+}
+</style>
+</head>
+<body>
+
+
+<main class="app">
+  <section class="deck" aria-label="시간과 스택 설정">
+    <div class="row row-time">
+      <div class="seg" role="group" aria-label="분">
+        <button class="key" id="minDown" type="button" aria-label="1분 빼기"><b>−1</b><span class="u">분</span></button>
+        <button class="key" id="minUp" type="button" aria-label="1분 더하기"><b>+1</b><span class="u">분</span></button>
+      </div>
+      <div class="seg" role="group" aria-label="초">
+        <button class="key" id="secDown" type="button" aria-label="1초 빼기"><b>−1</b><span class="u">초</span></button>
+        <button class="key" id="secUp" type="button" aria-label="1초 더하기"><b>+1</b><span class="u">초</span></button>
+      </div>
+    </div>
+    <div class="row row-stack">
+      <button class="key" id="nextBtn" type="button">다음 스택</button>
+      <button class="key" id="addBtn" type="button">스택 추가</button>
+      <button class="key" id="delBtn" type="button">스택 삭제</button>
+    </div>
+  </section>
+
+  <section class="pad" id="pad" data-state="idle" tabindex="0" role="button" aria-describedby="hint">
+    <div class="pad-top"><span>스택<b id="pos">1 / 3</b></span><span class="total" id="total"></span></div>
+    <div class="stage">
+      <p class="note" id="note" hidden></p>
+      <div class="readout">
+        <div class="time" id="time" role="timer"><span id="mm">0</span><span class="colon" aria-hidden="true"></span><span class="ss" id="ss">01</span><span class="tail" id="tail" hidden><span class="tenths"><span class="dp" aria-hidden="true"></span><span id="ds">0</span></span></span></div>
+        <div class="bar" aria-hidden="true"><i id="fill"></i></div>
+      </div>
+    </div>
+    <div class="hints">
+      <p class="hint" id="hint" aria-live="polite">누르고 있으면 시작</p>
+      <p class="sub" id="sub"></p>
+    </div>
+    <div class="ring" aria-hidden="true"></div>
+  </section>
+</main>
+
+<script>
+(() => {
+  'use strict';
+
+  const MAX_SEC = 5999;                       // 99:59 per stack
+  const MAX_STACKS = 50;
+  const STORE = 'vibration-stack-timer.v1';
+  const START_TICK = 20;                      // light tick when time starts flowing
+  const KEY_TICK = 10;                        // button feedback
+  const ARM_TICK = 40;                        // confirms vibration works
+  const NOPE = [15, 70, 15];
+  const PULSE_ON = 400, PULSE_OFF = 150, PULSES = 18;   // one call ≈ 9.9 s; browsers cap a single pulse at 10 s
+  const ALARM = Array.from({ length: PULSES * 2 }, (_, i) => (i % 2 ? PULSE_OFF : PULSE_ON));
+  const ALARM_PERIOD = PULSES * (PULSE_ON + PULSE_OFF);
+
+  const canVibrate = typeof navigator.vibrate === 'function';
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const $ = id => document.getElementById(id);
+  const pad = $('pad'), timeEl = $('time'), mmEl = $('mm'), ssEl = $('ss'), tailEl = $('tail'), dsEl = $('ds');
+  const fillEl = $('fill'), hintEl = $('hint'), subEl = $('sub'), posEl = $('pos'), totalEl = $('total'), noteEl = $('note');
+  const B = {
+    minDown: $('minDown'), minUp: $('minUp'), secDown: $('secDown'), secUp: $('secUp'),
+    next: $('nextBtn'), add: $('addBtn'), del: $('delBtn')
+  };
+
+  // ---- state
+  let stacks = [1, 3, 2];                    // seconds per stack (example sequence until you change it)
+  let cur = 0;
+  let phase = 'idle';                         // idle | running | paused | alarm
+  let total = 0, remaining = 0, endAt = 0;
+  let endT = 0, tickT = 0, alarmT = 0, msgT = 0;
+  let arming = false, selfActive = false, tipShown = false, lastStartTick = -1e9;
+  const TIP = '진동이 없었다면 무음 모드 해제 또는 크롬에서 열기';
+  let msg = null;
+  const held = new Set();
+
+  // ---- storage: a convenience for this browser only
+  try {
+    const d = JSON.parse(localStorage.getItem(STORE) || 'null');
+    if (d && Array.isArray(d.stacks) && d.stacks.length >= 1 && d.stacks.length <= MAX_STACKS &&
+        d.stacks.every(n => Number.isInteger(n) && n >= 0 && n <= MAX_SEC)) {
+      stacks = d.stacks;
+      cur = Math.min(Math.max(0, d.cur | 0), stacks.length - 1);
+    }
+  } catch (e) {}
+  const save = () => { try { localStorage.setItem(STORE, JSON.stringify({ stacks, cur })); } catch (e) {} };
+
+  // ---- vibration: browsers allow it only after the page has been touched once
+  const isActive = () => (navigator.userActivation ? navigator.userActivation.hasBeenActive : selfActive);
+  const vib = p => { if (!canVibrate) return false; try { return navigator.vibrate(p); } catch (e) { return false; } };
+
+  // ---- keep the screen on, but only while time flows or the alarm rings
+  let lock = null, wantLock = false, lockBusy = false;
+  async function keepAwake(on) {
+    wantLock = on;
+    if (!on) {
+      if (lock) { const l = lock; lock = null; l.release().catch(() => {}); }
+      return;
+    }
+    if (lock || lockBusy || !('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
+    lockBusy = true;
+    try {
+      const l = await navigator.wakeLock.request('screen');
+      if (wantLock) { lock = l; l.addEventListener('release', () => { if (lock === l) lock = null; }); }
+      else l.release().catch(() => {});
+    } catch (e) {
+      // Not granted here; the phone's own screen timeout applies.
+    } finally {
+      lockBusy = false;
+    }
+  }
+
+  // ---- display
+  const fmt = s => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  let shownLong = null;
+  function showTime(ms, withTenths) {
+    const t = Math.ceil(Math.max(0, ms) / 100);           // tenths, rounded up so 0.0 never shows while running
+    const s = Math.floor(t / 10), m = Math.floor(s / 60), r = s % 60;
+    const mm = String(m), ss = String(r).padStart(2, '0');
+    if (mmEl.textContent !== mm) mmEl.textContent = mm;
+    if (ssEl.textContent !== ss) ssEl.textContent = ss;
+    const long = mm.length > 1;
+    if (long !== shownLong) { timeEl.classList.toggle('is-long', long); shownLong = long; }
+    tailEl.hidden = !withTenths;
+    if (withTenths) dsEl.textContent = String(t % 10);
+    timeEl.setAttribute('aria-label', m + '분 ' + r + '초');
+  }
+
+  function setBar(from, dur) {
+    fillEl.style.transition = 'none';
+    fillEl.style.transform = 'scaleX(' + Math.min(1, Math.max(0, from)) + ')';
+    if (dur > 0) {
+      void fillEl.offsetWidth;
+      fillEl.style.transition = 'transform ' + Math.round(dur) + 'ms linear';
+      fillEl.style.transform = 'scaleX(1)';
+    }
+  }
+
+  function slide(dir) {
+    if (reduceMotion) return;
+    timeEl.classList.remove('slide-next', 'slide-prev');
+    void timeEl.offsetWidth;
+    timeEl.classList.add(dir === 'next' ? 'slide-next' : 'slide-prev');
+  }
+  timeEl.addEventListener('animationend', () => timeEl.classList.remove('slide-next', 'slide-prev'));
+
+  function flash(hint, sub, ms) {
+    msg = { hint, sub };
+    clearTimeout(msgT);
+    msgT = setTimeout(() => { msg = null; render(); }, ms);
+    render();
+  }
+
+  function hints() {
+    if (phase === 'running') return ['떼면 일시정지', ''];
+    if (phase === 'alarm') return ['끝 · 손을 떼면 진동 멈춤', '다시 누르면 다음 스택 시작'];
+    if (arming) return ['손을 떼면 진동 켜짐', '이 브라우저는 첫 터치 뒤부터 진동을 허용함'];
+    if (msg) return [msg.hint, msg.sub];
+    if (phase === 'paused') return ['누르면 이어서', ''];
+    if (stacks[cur] === 0) return ['위 버튼으로 시간 설정', ''];
+    return ['누르고 있으면 시작', ''];
+  }
+
+  function render() {
+    const n = stacks.length, s = stacks[cur];
+    const locked = phase === 'running' || phase === 'alarm';
+    pad.dataset.state = phase;
+    posEl.textContent = (cur + 1) + ' / ' + n;
+    totalEl.textContent = (phase === 'running' || phase === 'paused') ? '전체 ' + fmt(s) : '';
+
+    if (phase === 'running') showTime(endAt - performance.now(), true);
+    else if (phase === 'paused') showTime(remaining, true);
+    else showTime(s * 1000, false);
+
+    const [h, sub] = hints();
+    if (hintEl.textContent !== h) hintEl.textContent = h;
+    if (subEl.textContent !== sub) subEl.textContent = sub;
+
+    B.minDown.disabled = locked || s < 60;
+    B.secDown.disabled = locked || s === 0;
+    B.minUp.disabled = locked || s >= MAX_SEC;
+    B.secUp.disabled = locked || s >= MAX_SEC;
+    B.next.disabled = locked || n < 2;
+    B.add.disabled = locked || n >= MAX_STACKS;
+    if (phase === 'paused') { B.del.textContent = '처음부터'; B.del.disabled = false; }
+    else if (n > 1) { B.del.textContent = '스택 삭제'; B.del.disabled = locked; }
+    else { B.del.textContent = '비우기'; B.del.disabled = locked || s === 0; }
+  }
+
+  // ---- timer flow
+  function nextIndex(i) {
+    const n = stacks.length;
+    for (let k = 1; k <= n; k++) { const j = (i + k) % n; if (stacks[j] > 0) return j; }
+    return i;
+  }
+
+  function startFlow() {
+    msg = null; clearTimeout(msgT);
+    phase = 'running';
+    endAt = performance.now() + remaining;
+    clearTimeout(endT);
+    endT = setTimeout(checkEnd, remaining);
+    setBar(1 - remaining / total, remaining);
+    const now = performance.now();
+    if (now - lastStartTick > 400) { vib(START_TICK); lastStartTick = now; }
+    keepAwake(true);
+    render();
+    tick();
+  }
+
+  function tick() {                            // updates only when the tenths digit changes
+    clearTimeout(tickT);
+    if (phase !== 'running') return;
+    const rem = endAt - performance.now();
+    showTime(rem, true);
+    if (rem > 0) tickT = setTimeout(tick, (rem % 100 || 100) + 2);
+  }
+
+  function checkEnd() {
+    if (phase !== 'running') return;
+    const rem = endAt - performance.now();
+    if (rem > 3) { endT = setTimeout(checkEnd, rem); return; }
+    finish();
+  }
+
+  function finish() {                          // time is up: ring until release, next stack is already loaded
+    clearTimeout(endT); clearTimeout(tickT);
+    phase = 'alarm';
+    cur = nextIndex(cur);
+    save();
+    setBar(0, 0);
+    vib(ALARM);
+    clearInterval(alarmT);
+    alarmT = setInterval(() => vib(ALARM), ALARM_PERIOD);
+    keepAwake(true);
+    render();
+    slide('next');
+  }
+
+  function stopAlarm() {
+    clearInterval(alarmT); alarmT = 0;
+    vib(0);
+    phase = 'idle';
+    keepAwake(false);
+    if (!tipShown && canVibrate) { tipShown = true; flash('누르고 있으면 시작', TIP, 4500); }   // once per visit
+    else render();
+  }
+
+  function pauseFlow() {
+    clearTimeout(endT); clearTimeout(tickT);
+    remaining = endAt - performance.now();
+    if (remaining <= 15) {                     // lifted right at the end: count it as finished
+      phase = 'idle';
+      cur = nextIndex(cur);
+      save();
+      setBar(0, 0);
+      vib(120);
+      keepAwake(false);
+      render();
+      slide('next');
+      return;
+    }
+    phase = 'paused';
+    setBar(1 - remaining / total, 0);
+    keepAwake(false);
+    render();
+  }
+
+  function press(id) {
+    held.add(id);
+    pad.classList.add('is-held');
+    if (held.size > 1) return;
+    if (phase === 'idle') {
+      if (canVibrate && !isActive()) { arming = true; render(); return; }
+      const s = stacks[cur];
+      if (s === 0) { vib(NOPE); flash('먼저 위에서 시간 설정', '', 1600); return; }
+      total = remaining = s * 1000;
+      startFlow();
+    } else if (phase === 'paused') {
+      startFlow();
+    }
+  }
+
+  function release(id) {
+    if (!held.delete(id) || held.size) return;
+    pad.classList.remove('is-held');
+    if (arming) {
+      arming = false;
+      selfActive = true;
+      setTimeout(() => vib(ARM_TICK), 0);
+      tipShown = true;
+      flash('준비 완료 · 누르고 있으면 시작', TIP.replace('없었다면', '안 느껴졌다면'), 5000);
+      return;
+    }
+    if (phase === 'running') pauseFlow();
+    else if (phase === 'alarm') stopAlarm();
+  }
+
+  pad.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    try { pad.setPointerCapture(e.pointerId); } catch (_) {}
+    press(e.pointerId);
+  });
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+    pad.addEventListener(type, e => release(e.pointerId));
+  }
+
+  // Space works like a finger on the pad (handy on a computer)
+  const padKey = e => e.code === 'Space' && !(e.target instanceof HTMLButtonElement);
+  addEventListener('keydown', e => { if (padKey(e)) { e.preventDefault(); if (!e.repeat) press('key'); } });
+  addEventListener('keyup', e => { if (padKey(e)) { e.preventDefault(); release('key'); } });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') { render(); return; }
+    arming = false;
+    held.clear();
+    pad.classList.remove('is-held');
+    if (phase === 'running') pauseFlow();
+    else if (phase === 'alarm') stopAlarm();
+  });
+
+  // refresh the hint once the first touch has unlocked vibration
+  const sync = () => setTimeout(render, 0);
+  addEventListener('pointerup', sync, true);
+  addEventListener('keydown', sync, true);
+  addEventListener('contextmenu', e => e.preventDefault());
+
+  // ---- buttons
+  function discardProgress() {
+    if (phase !== 'paused') return;
+    phase = 'idle';
+    remaining = 0;
+    setBar(0, 0);
+  }
+
+  function adjust(delta) {
+    discardProgress();
+    const s = stacks[cur];
+    if (delta === -60 && s < 60) { render(); return false; }
+    const v = Math.min(MAX_SEC, Math.max(0, s + delta));
+    if (v === s) { render(); return false; }
+    stacks[cur] = v;
+    save();
+    render();
+    return true;
+  }
+
+  function repeatable(el, delta) {             // tap = one step, hold = keeps stepping, then speeds up
+    let t = 0, n = 0;
+    const stop = () => { clearTimeout(t); t = 0; el.classList.remove('is-down'); };
+    el.addEventListener('pointerdown', e => {
+      if (el.disabled || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      e.preventDefault();
+      try { el.setPointerCapture(e.pointerId); } catch (_) {}
+      el.classList.add('is-down');
+      if (!adjust(delta)) { stop(); return; }
+      vib(KEY_TICK);
+      n = 0;
+      const step = () => {
+        if (!adjust(delta)) { stop(); return; }
+        n++;
+        t = setTimeout(step, n < 8 ? 110 : 50);
+      };
+      t = setTimeout(step, 420);
+    });
+    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) el.addEventListener(type, stop);
+    el.addEventListener('keydown', e => {
+      if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) {
+        e.preventDefault();
+        if (!el.disabled && adjust(delta)) vib(KEY_TICK);
+      }
+    });
+  }
+  repeatable(B.minDown, -60);
+  repeatable(B.minUp, 60);
+  repeatable(B.secDown, -1);
+  repeatable(B.secUp, 1);
+
+  B.next.addEventListener('click', () => {
+    if (B.next.disabled) return;
+    discardProgress();
+    cur = (cur + 1) % stacks.length;
+    save(); render(); slide('next'); vib(KEY_TICK);
+  });
+
+  B.add.addEventListener('click', () => {      // new empty stack right after this one, shown at once
+    if (B.add.disabled) return;
+    discardProgress();
+    stacks.splice(cur + 1, 0, 0);
+    cur += 1;
+    save(); render(); slide('next'); vib(KEY_TICK);
+  });
+
+  B.del.addEventListener('click', () => {
+    if (B.del.disabled) return;
+    if (phase === 'paused') { discardProgress(); render(); vib(KEY_TICK); return; }   // "처음부터"
+    if (stacks.length > 1) {
+      stacks.splice(cur, 1);
+      cur = Math.max(0, cur - 1);
+      slide('prev');
+    } else {
+      stacks[0] = 0;
+    }
+    save(); render(); vib(KEY_TICK);
+  });
+
+  if (!canVibrate) {
+    noteEl.textContent = '이 브라우저는 진동 미지원 · 안드로이드 크롬이나 삼성 인터넷에서 열기';
+    noteEl.hidden = false;
+  }
+  render();
+})();
+</script>
+
+<script>
+if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+</script>
+</body>
+</html>
